@@ -1,0 +1,70 @@
+name: Deploy site
+
+on:
+  schedule:
+    - cron: '40 5 * * *'
+    - cron: '40 11 * * *'
+    - cron: '40 17 * * *'
+    - cron: '40 23 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # The site is generated from the profile repo, so there is a single source of truth.
+      - name: Checkout the profile generator
+        uses: actions/checkout@v7
+        with:
+          repository: sv3tli0/sv3tli0
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: none
+
+      - name: Draw the site
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: php profile-generator.php
+
+      - name: Forward the old /sv3tli0/ address
+        run: |
+          mkdir -p dist/sv3tli0
+          cat > dist/sv3tli0/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>Moved</title>
+          <link rel="canonical" href="https://sv3tli0.github.io/">
+          <meta http-equiv="refresh" content="0; url=https://sv3tli0.github.io/">
+          <script>location.replace('/' + location.hash)</script>
+          <a href="https://sv3tli0.github.io/">The drawing set moved to sv3tli0.github.io</a>
+          HTML
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
